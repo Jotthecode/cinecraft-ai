@@ -225,12 +225,12 @@ export async function generateStoryboardImage(params: ImageGenerationParams): Pr
       const refImage = params.originalShotImage || params.characterReferenceImage;
       let res: any;
 
-      if (refImage && refImage.startsWith('http')) {
+      if (refImage && (refImage.startsWith('http') || refImage.startsWith('data:image'))) {
         try {
           const inputObj: any = {
             prompt: fullPrompt,
             image_url: refImage,
-            strength: params.denoisingStrength || 0.5,
+            strength: params.denoisingStrength ?? 0.35,
             image_size: 'landscape_16_9',
           };
           res = await fal.subscribe('fal-ai/flux/dev/image-to-image', { input: inputObj });
@@ -260,9 +260,9 @@ export async function generateStoryboardImage(params: ImageGenerationParams): Pr
       const inputObj: any = { prompt: fullPrompt, aspect_ratio: '16:9' };
 
       const refImage = params.originalShotImage || params.characterReferenceImage;
-      if (refImage && refImage.startsWith('http')) {
+      if (refImage && (refImage.startsWith('http') || refImage.startsWith('data:image'))) {
         inputObj.image = refImage;
-        inputObj.prompt_strength = 1 - (params.denoisingStrength || 0.5);
+        inputObj.prompt_strength = 1 - (params.denoisingStrength ?? 0.35);
       }
 
       const output: any = await replicate.run(model, { input: inputObj });

@@ -46,7 +46,7 @@ export interface Shot {
   dialogue?: string;
   image_prompt: string;
   character_ids: string[];
-  status: 'idle' | 'generating' | 'completed' | 'error';
+  status: 'idle' | 'generating' | 'editing' | 'completed' | 'error';
   image_url?: string;
   original_image_url?: string;
   original_prompt?: string;

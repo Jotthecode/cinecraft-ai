@@ -87,7 +87,31 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
       {/* Image Container with Loading Skeleton */}
       <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
-        {shot.status === 'generating' ? (
+        {shot.status === 'editing' ? (
+          <div className="relative flex h-full w-full flex-col items-center justify-center space-y-3 bg-slate-900 p-4 text-center overflow-hidden">
+            {/* Shimmer pulse backdrop */}
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-purple-950/40 to-slate-950 animate-pulse" />
+            
+            <div className="relative z-10 flex flex-col items-center space-y-2">
+              <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/20 shadow-lg shadow-amber-500/10">
+                <Wand2 className="h-5 w-5 animate-spin text-amber-400" />
+                <Sparkles className="absolute -top-1 -right-1 h-3.5 w-3.5 text-purple-400 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-100 tracking-wide">
+                  Applying Delta Edit to Shot #{shot.shot_number}
+                </p>
+                <p className="text-[10px] font-mono text-amber-300 animate-pulse mt-0.5">
+                  Img2Img Non-Destructive Synthesis...
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 pt-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-[10px] text-slate-400 font-medium">Preserving character face lock & background</span>
+              </div>
+            </div>
+          </div>
+        ) : shot.status === 'generating' ? (
           <div className="relative flex h-full w-full flex-col items-center justify-center space-y-3 bg-slate-900 p-4 text-center overflow-hidden">
             {/* Shimmer pulse backdrop */}
             <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-indigo-950/40 to-slate-950 animate-pulse" />
