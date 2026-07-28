@@ -3,11 +3,48 @@ import Replicate from 'replicate';
 import { GoogleGenAI } from '@google/genai';
 import { generateSvgMockDataUrl } from './imageEngine';
 
+export type EditType = 'local_detail' | 'camera_angle' | 'new_character';
+
+/**
+ * Requirement 2 & 3 Edit Instruction Classifier
+ */
+export function classifyEditInstruction(instruction: string): { editType: EditType; disclaimer?: string } {
+  const text = instruction.toLowerCase().trim();
+
+  // Check camera angle edit keywords (Requirement 3)
+  const cameraKeywords = [
+    'camera', 'angle', 'eye-level', 'low angle', 'high angle', 'close-up', 'close up',
+    'wide shot', 'establishing', 'over-the-shoulder', 'ots', 'top-down', 'top down',
+    'bird\'s eye', 'birds eye', 'zoom', 'framing', 'perspective', 'view', 'tilt', 'pan'
+  ];
+  const isCamera = cameraKeywords.some((kw) => text.includes(kw));
+
+  if (isCamera) {
+    return {
+      editType: 'camera_angle',
+      disclaimer: 'Camera angle changes may cause minor background variation — review before applying.',
+    };
+  }
+
+  // Check new character keywords
+  const newCharKeywords = ['add a new character', 'add character', 'introduce', 'new person', 'add a boy', 'add a girl', 'add a man', 'add a woman'];
+  if (newCharKeywords.some((kw) => text.includes(kw))) {
+    return {
+      editType: 'new_character',
+    };
+  }
+
+  return {
+    editType: 'local_detail',
+  };
+}
+
 export interface ImageEditParams {
   instruction: string;
   sourceImage?: string;             // Shot's current rendered image for edits
   referenceImages?: string[];       // Character canonical face-card reference images
   systemInstruction?: string;
+  editType?: EditType;
   denoisingStrength?: number;
   seed?: number;
   geminiApiKey?: string;
@@ -21,6 +58,8 @@ export interface ImageEditResult {
   engine: string;
   promptUsed: string;
   hasReferenceImage: boolean;
+  editType?: EditType;
+  disclaimer?: string;
   isFallbackTextOnly?: boolean;
   consistencyWarning?: string;
 }

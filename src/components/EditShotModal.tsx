@@ -46,13 +46,14 @@ export const EditShotModal: React.FC<EditShotModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedImageUrl, setEditedImageUrl] = useState<string | null>(null);
   const [editedPrompt, setEditedPrompt] = useState<string | null>(null);
+  const [disclaimerMsg, setDisclaimerMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen || !shot) return null;
 
   const sampleInstructions = [
     "Change camera angle to dramatic low angle",
-    "Make it torrential rain at night with glowing neon reflections",
+    "Add a steaming brass cup of coffee on the table",
     "Add warm sunset golden hour lighting",
     "Switch to a tight emotional close-up shot",
     "Add cinematic lens flare and film grain",
@@ -64,6 +65,7 @@ export const EditShotModal: React.FC<EditShotModalProps> = ({
 
     setIsEditing(true);
     setErrorMsg(null);
+    setDisclaimerMsg(null);
 
     try {
       const res = await fetch('/api/edit-shot', {
@@ -71,6 +73,7 @@ export const EditShotModal: React.FC<EditShotModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           originalImageUrl: shot.image_url,
+          sourceImageUrl: shot.image_url,
           editInstruction,
           characterAnchor: visualAnchor,
           visualAnchor,
@@ -101,6 +104,7 @@ export const EditShotModal: React.FC<EditShotModalProps> = ({
 
       setEditedImageUrl(data.newImageUrl);
       setEditedPrompt(data.updatedPrompt);
+      setDisclaimerMsg(data.disclaimer || null);
     } catch (err: any) {
       console.error("Edit shot error:", err);
       setErrorMsg(err.message || 'Error occurred while editing shot.');
@@ -197,6 +201,13 @@ export const EditShotModal: React.FC<EditShotModalProps> = ({
                 {gender && <span className="mr-1.5 font-bold text-emerald-300">[{gender}]</span>}
                 <span className="truncate">{visualAnchor}</span>
               </div>
+            </div>
+          )}
+
+          {disclaimerMsg && (
+            <div className="flex items-center gap-2 rounded-xl bg-amber-500/10 p-3 border border-amber-500/30 text-xs font-semibold text-amber-300">
+              <Sliders className="h-4 w-4 text-amber-400 shrink-0" />
+              <span>{disclaimerMsg}</span>
             </div>
           )}
 

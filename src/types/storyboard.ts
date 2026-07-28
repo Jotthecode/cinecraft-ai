@@ -9,6 +9,7 @@ export interface CharacterAnchor {
   reference_prompt?: string;
   reference_image_url?: string;
   referenceImageUrls?: string[]; // Array of canonical face-card reference images
+  lockedTraits?: string; // Explicit demographic & facial traits locked for identity continuity
 }
 
 export type ShotType = 
@@ -53,6 +54,10 @@ export interface Shot {
   sourceImageUrl?: string; // Current rendered image conditioned on for edits
   hasReferenceImage?: boolean; // Indicates if character reference image was available
   consistencyWarning?: string; // Visible warning if text-to-image fallback was used
+  lastEditInstruction?: string;
+  editType?: 'local_detail' | 'camera_angle' | 'new_character';
+  disclaimer?: string; // Edit-specific UI disclaimer (e.g. for camera angle changes)
+  preflightBlocked?: boolean; // Indicates generation blocked due to missing face card reference
   original_prompt?: string;
   edit_history?: ShotEditRecord[];
   error_message?: string;

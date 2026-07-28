@@ -1,4 +1,4 @@
-import { generateImageConditionedShot } from '@/lib/imageEdit';
+import { generateImageConditionedShot, classifyEditInstruction } from '@/lib/imageEdit';
 
 export interface TestChecklistItem {
   step: string;
@@ -7,14 +7,18 @@ export interface TestChecklistItem {
 }
 
 /**
- * Manual Test Pipeline Script for Image-Conditioned Shot Generation & Editing
+ * Manual QA Checklist Script for AI Storyboard Image Pipeline
+ * Verifies Requirements 1, 2, and 3:
+ * 1. Character Identity & Reference Image Conditioning
+ * 2. Targeted In-Place Edit (Local Detail Change)
+ * 3. Isolated Camera Angle Re-Framing with UI Disclaimer
  */
 export async function runImagePipelineManualTest(): Promise<TestChecklistItem[]> {
-  console.log("=== STARTING IMAGE-CONDITIONED PIPELINE TEST ===");
+  console.log("=== STARTING QA CHECKLIST MANUAL TEST SUITE ===");
   const checklistResults: TestChecklistItem[] = [];
 
-  // Step 1: Generate Face Card (First Time)
-  console.log("Step 1: Generating Face Card Reference Image...");
+  // Step 1: Character Face Card Generation & Storage
+  console.log("Step 1: Generating Character Face Card (Jackie Shroff)...");
   const faceCardResult = await generateImageConditionedShot({
     instruction: "Face Card: Jackie Shroff, iconic 60s Bollywood superstar with dark aviator sunglasses, brown vintage leather jacket, silk neck bandana, highly detailed photorealistic portrait.",
   });
@@ -22,12 +26,12 @@ export async function runImagePipelineManualTest(): Promise<TestChecklistItem[]>
   const referenceImageUrl = faceCardResult.imageUrl;
   const step1Passed = Boolean(referenceImageUrl);
   checklistResults.push({
-    step: "1. Face Card Generation & Identity Store",
+    step: "Requirement 1: Face Card Generation & Canonical Identity Store",
     passed: step1Passed,
-    details: `Engine: ${faceCardResult.engine}, Reference Image Created: ${referenceImageUrl ? 'YES' : 'NO'}`,
+    details: `Engine: ${faceCardResult.engine}, Reference Image Stored: ${referenceImageUrl ? 'YES' : 'NO'}`,
   });
 
-  // Step 2: Generate 3 Shots using Image Conditioning with Face Card Reference
+  // Step 2: Generate 3 Shots using Image Conditioning with Character Reference
   const shotPrompts = [
     "Shot 1 (Establishing Shot): Jackie Shroff sitting on a director's folding chair at a Mumbai film set under golden sunset light.",
     "Shot 2 (Medium Close-Up): Same person, Jackie Shroff dunking a rectangular golden biscuit into hot cutting chai on a wooden table.",
@@ -45,30 +49,54 @@ export async function runImagePipelineManualTest(): Promise<TestChecklistItem[]>
     generatedShots.push(shotResult.imageUrl);
 
     checklistResults.push({
-      step: `2.${i + 1}. Image-Conditioned Shot ${i + 1}`,
+      step: `Requirement 1: Image-Conditioned Shot ${i + 1} Render`,
       passed: Boolean(shotResult.imageUrl),
-      details: `Engine: ${shotResult.engine}, Conditioned on Face Reference Image: ${shotResult.hasReferenceImage ? 'YES' : 'NO'}`,
+      details: `Engine: ${shotResult.engine}, Conditioned on Face Card Reference: ${shotResult.hasReferenceImage ? 'YES' : 'NO'}`,
     });
   }
 
-  // Step 3: Run Natural Language Edit on Shot 2 using Source Image as input
-  console.log("Step 3: Editing Shot 2 with Natural Language using source image input...");
+  // Step 3: Requirement 2 Edit (Targeted In-Place Detail Modification)
+  console.log("Step 3: Requirement 2 Local Detail Edit on Shot 2...");
   const sourceShotImage = generatedShots[1] || referenceImageUrl;
-  const editResult = await generateImageConditionedShot({
-    instruction: "Add a steaming brass cup of coffee on the wooden table next to the chai glass.",
+  const req2Instruction = "Add a steaming brass cup of coffee on the wooden table next to the chai glass.";
+  const req2Classification = classifyEditInstruction(req2Instruction);
+
+  const editReq2Result = await generateImageConditionedShot({
+    instruction: req2Instruction,
     sourceImage: sourceShotImage,
     referenceImages: [referenceImageUrl],
-    systemInstruction: "This is an edit, not a new image. Preserve composition, character identity, pose, lighting, and background exactly as shown, except for this change: Add a steaming brass cup of coffee on the wooden table next to the chai glass.",
+    systemInstruction: "This is a targeted edit, not a new image. Preserve composition, camera angle, character identity, clothing, pose, and lighting EXACTLY as shown in the source image. Apply ONLY this change: Add a steaming brass cup of coffee on the wooden table next to the chai glass. Do not alter anything else.",
+    editType: req2Classification.editType,
+    denoisingStrength: 0.35,
   });
 
-  const step3Passed = Boolean(editResult.imageUrl);
   checklistResults.push({
-    step: "3. Image-Conditioned Natural Language Edit",
-    passed: step3Passed,
-    details: `Engine: ${editResult.engine}, Conditioned on Source Image: YES`,
+    step: "Requirement 2: In-Place Local Detail Edit (Source Image Conditioned)",
+    passed: Boolean(editReq2Result.imageUrl) && req2Classification.editType === 'local_detail',
+    details: `Engine: ${editReq2Result.engine}, Classified Type: ${req2Classification.editType}`,
   });
 
-  console.log("=== MANUAL TEST CHECKLIST SUMMARY ===");
+  // Step 4: Requirement 3 Edit (Isolated Camera Angle / Framing Change)
+  console.log("Step 4: Requirement 3 Camera Angle Re-Framing Edit on Shot 2...");
+  const req3Instruction = "Change camera angle to dramatic low-angle shot looking up";
+  const req3Classification = classifyEditInstruction(req3Instruction);
+
+  const editReq3Result = await generateImageConditionedShot({
+    instruction: req3Instruction,
+    sourceImage: sourceShotImage,
+    referenceImages: [referenceImageUrl],
+    systemInstruction: `Re-render this exact scene from a new camera angle: ${req3Instruction}. Keep the same character identity, clothing, pose/action context, set dressing, and lighting mood. Only the camera perspective and framing should change.`,
+    editType: req3Classification.editType,
+    denoisingStrength: 0.65,
+  });
+
+  checklistResults.push({
+    step: "Requirement 3: Isolated Camera Angle Re-Framing with UI Disclaimer",
+    passed: Boolean(editReq3Result.imageUrl) && req3Classification.editType === 'camera_angle' && Boolean(req3Classification.disclaimer),
+    details: `Engine: ${editReq3Result.engine}, Classified Type: ${req3Classification.editType}, Disclaimer: "${req3Classification.disclaimer}"`,
+  });
+
+  console.log("=== MANUAL QA CHECKLIST SUMMARY ===");
   checklistResults.forEach((res) => {
     console.log(`[${res.passed ? 'PASS' : 'FAIL'}] ${res.step} - ${res.details}`);
   });

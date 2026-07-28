@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateImageConditionedShot } from '@/lib/imageEdit';
+import { generateImageConditionedShot, classifyEditInstruction } from '@/lib/imageEdit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,19 +30,32 @@ export async function POST(req: NextRequest) {
 
     const refImagesList: string[] = [];
     if (Array.isArray(referenceImages)) {
-      refImagesList.push(...referenceImages);
+      refImagesList.push(...referenceImages.filter(Boolean));
     } else if (characterReferenceImage) {
       refImagesList.push(characterReferenceImage);
     }
 
-    const systemInstruction = `This is an edit, not a new image. Preserve composition, character identity, pose, lighting, and background exactly as shown, except for this change: ${editInstruction}.`;
+    // 1. Classify edit instruction into local_detail, camera_angle, or new_character
+    const classification = classifyEditInstruction(editInstruction);
+    const { editType, disclaimer } = classification;
+
+    // 2. Select system instruction template based on classification
+    let systemInstruction = "";
+    if (editType === 'camera_angle') {
+      systemInstruction = `Re-render this exact scene from a new camera angle: ${editInstruction}. Keep the same character identity, clothing, pose/action context, set dressing, and lighting mood. Only the camera perspective and framing should change.`;
+    } else if (editType === 'new_character') {
+      systemInstruction = `This is an image edit introducing a new subject/character into the existing scene frame. Preserve the existing scene composition, background, lighting, and current character identities exactly as shown in the source image. Add the new subject as specified: ${editInstruction}. Ensure natural physical surface contact and shadows.`;
+    } else {
+      systemInstruction = `This is a targeted edit, not a new image. Preserve composition, camera angle, character identity, clothing, pose, and lighting EXACTLY as shown in the source image. Apply ONLY this change: ${editInstruction}. Do not alter anything else.`;
+    }
 
     const result = await generateImageConditionedShot({
       instruction: editInstruction,
       sourceImage: currentShotImage,
       referenceImages: refImagesList,
       systemInstruction,
-      denoisingStrength: 0.35,
+      editType,
+      denoisingStrength: editType === 'camera_angle' ? 0.65 : 0.35,
       seed: seed || 489201,
       geminiApiKey: geminiApiKey || process.env.GEMINI_API_KEY,
       falApiKey: falApiKey || process.env.FAL_KEY,
@@ -55,6 +68,8 @@ export async function POST(req: NextRequest) {
       updatedPrompt: `${systemInstruction}\nINSTRUCTION: ${editInstruction}`,
       newImageUrl: result.imageUrl,
       engineUsed: result.engine,
+      editType,
+      disclaimer: disclaimer || result.disclaimer,
       hasReferenceImage: result.hasReferenceImage,
       consistencyWarning: result.consistencyWarning,
     });
