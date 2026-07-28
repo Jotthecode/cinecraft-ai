@@ -85,16 +85,16 @@ ${userInstruction}
 `.trim();
 }
 
-import { buildGeminiShotPrompt } from '@/utils/buildShotPrompt';
-export { buildGeminiShotPrompt };
-export type { ShotConfig } from '@/utils/buildShotPrompt';
+import { buildGeminiShotPrompt, buildStylisticIdentityPrompt } from '@/utils/buildShotPrompt';
+export { buildGeminiShotPrompt, buildStylisticIdentityPrompt };
+export type { ShotConfig, StylisticIdentityPromptOptions } from '@/utils/buildShotPrompt';
 
 /**
  * Universal Dynamic Shot Prompt Engine
  * Constructs image prompts dynamically for ANY arbitrary character, enforcing framing, location, and action
  */
 export function buildDynamicShotPrompt(params: DynamicShotPromptParams): string {
-  if (params.basePrompt && (params.basePrompt.includes('FRAME COMPOSITION:') || params.basePrompt.includes('CHARACTER IDENTITY LOCK') || params.basePrompt.includes('[STRICT IDENTITY LOCK & PRESERVATION]') || params.basePrompt.includes('[CANONICAL STYLE]:'))) {
+  if (params.basePrompt && (params.basePrompt.includes('FRAME COMPOSITION:') || params.basePrompt.includes('CHARACTER IDENTITY LOCK') || params.basePrompt.includes('[STRICT IDENTITY LOCK & PRESERVATION]') || params.basePrompt.includes('[CANONICAL STYLE]:') || params.basePrompt.includes('[SYSTEM DIRECTIVE:'))) {
     let prompt = params.basePrompt.trim();
     if (params.gender && !prompt.toLowerCase().includes(params.gender.toLowerCase())) {
       prompt += ` GENDER STRICT LOCK: Subject MUST strictly be ${params.gender}.`;
