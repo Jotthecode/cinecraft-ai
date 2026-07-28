@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { StoryboardData } from '@/types/storyboard';
 import { parseScriptFallback } from './openai';
 
@@ -196,3 +197,32 @@ Task: Rewrite the image generation prompt to apply the user's edit instruction (
     return `${originalPrompt}, modified: ${editInstruction}`;
   }
 }
+
+/**
+ * Gemini Imagen 3 (imagen-3.0-generate-002) Image Generation Integration
+ */
+export async function generateStoryboardShot(promptText: string, aspectRatio = "16:9", customApiKey?: string) {
+  try {
+    const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.trim() === '') {
+      throw new Error("Gemini API key is required for Imagen generation.");
+    }
+    const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+    const response: any = await ai.models.generateImages({
+      model: "imagen-3.0-generate-002",
+      prompt: promptText,
+      config: {
+        numberOfImages: 1,
+        outputMimeType: "image/jpeg",
+        aspectRatio: aspectRatio,
+        personGeneration: "ALLOW_ADULT" as any,
+      },
+    });
+    const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+    return `data:image/jpeg;base64,${base64ImageBytes}`;
+  } catch (error) {
+    console.error("Gemini Imagen Generation Error:", error);
+    throw error;
+  }
+}
+

@@ -39,12 +39,20 @@ export async function POST(req: NextRequest) {
     const effectiveAction = shotMetadata?.action || action;
     const effectiveSeed = seed || 489201;
 
-    // 1. Build Dynamic Structured Edit Prompt Template
+    // 1. Build Dynamic Structured Edit Prompt Template with Negative Constraints
     const structuredEditPrompt = buildShotEditPrompt({
       userInstruction: editInstruction,
       characterName: effectiveVisualAnchor,
       seed: effectiveSeed,
       preserveAttributes: ["facial identity", "headwear", "clothing", "lighting", "camera angle", "background setting"],
+      negativeConstraints: [
+        "unrequested hats or headwear",
+        gender === 'Male' ? "female features" : gender === 'Female' ? "male features" : "opposite gender features",
+        "distorted hands",
+        "malformed fingers or extra fingers",
+        "extra limbs or anatomical deformities",
+        "blurry low quality artifacts"
+      ]
     });
 
     // 2. Strict Character Continuity & Base Reference Prompt Locks

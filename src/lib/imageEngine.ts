@@ -51,6 +51,7 @@ export interface ShotEditOptions {
   characterName: string;       // e.g., "Detective Sam"
   seed?: string | number;      // e.g., "489201"
   preserveAttributes?: string[]; // e.g., ["face", "hair", "clothing", "lighting"]
+  negativeConstraints?: string[]; // e.g., ["unrequested hats", "female features", "distorted hands"]
 }
 
 export function buildShotEditPrompt(options: ShotEditOptions): string {
@@ -58,14 +59,21 @@ export function buildShotEditPrompt(options: ShotEditOptions): string {
     userInstruction,
     characterName,
     seed,
-    preserveAttributes = ["facial identity", "headwear", "clothing", "lighting", "camera angle"]
+    preserveAttributes = ["facial identity", "headwear", "clothing", "lighting", "camera angle"],
+    negativeConstraints = [
+      "unrequested hats or headwear",
+      "opposite gender or female features when subject is male",
+      "distorted hands or malformed fingers",
+      "extra limbs or anatomical deformities",
+      "blurry low quality artifacts"
+    ]
   } = options;
 
   return `
 [STRICT IDENTITY LOCK & PRESERVATION]
 - Target Subject: ${characterName} ${seed ? `(Seed / Reference State: ${seed})` : ""}
 - DO NOT ALTER: ${preserveAttributes.join(", ")}.
-- DO NOT ADD: Unrequested hats, accessories, background elements, or facial changes.
+- DO NOT ADD / NEGATIVE CONSTRAINTS: ${negativeConstraints.join(", ")}.
 - STYLE CONSISTENCY: Maintain exact photorealism, color palette, and art style of the original shot.
 
 [MODIFICATION INSTRUCTION]
@@ -77,12 +85,16 @@ ${userInstruction}
 `.trim();
 }
 
+import { buildGeminiShotPrompt } from '@/utils/buildShotPrompt';
+export { buildGeminiShotPrompt };
+export type { ShotConfig } from '@/utils/buildShotPrompt';
+
 /**
  * Universal Dynamic Shot Prompt Engine
  * Constructs image prompts dynamically for ANY arbitrary character, enforcing framing, location, and action
  */
 export function buildDynamicShotPrompt(params: DynamicShotPromptParams): string {
-  if (params.basePrompt && (params.basePrompt.includes('FRAME COMPOSITION:') || params.basePrompt.includes('CHARACTER IDENTITY LOCK') || params.basePrompt.includes('[STRICT IDENTITY LOCK & PRESERVATION]'))) {
+  if (params.basePrompt && (params.basePrompt.includes('FRAME COMPOSITION:') || params.basePrompt.includes('CHARACTER IDENTITY LOCK') || params.basePrompt.includes('[STRICT IDENTITY LOCK & PRESERVATION]') || params.basePrompt.includes('[CANONICAL STYLE]:'))) {
     let prompt = params.basePrompt.trim();
     if (params.gender && !prompt.toLowerCase().includes(params.gender.toLowerCase())) {
       prompt += ` GENDER STRICT LOCK: Subject MUST strictly be ${params.gender}.`;
