@@ -46,12 +46,43 @@ export interface DynamicShotPromptParams {
   basePrompt?: string;
 }
 
+export interface ShotEditOptions {
+  userInstruction: string;    // e.g., "Add a steaming brass cup of coffee"
+  characterName: string;       // e.g., "Detective Sam"
+  seed?: string | number;      // e.g., "489201"
+  preserveAttributes?: string[]; // e.g., ["face", "hair", "clothing", "lighting"]
+}
+
+export function buildShotEditPrompt(options: ShotEditOptions): string {
+  const {
+    userInstruction,
+    characterName,
+    seed,
+    preserveAttributes = ["facial identity", "headwear", "clothing", "lighting", "camera angle"]
+  } = options;
+
+  return `
+[STRICT IDENTITY LOCK & PRESERVATION]
+- Target Subject: ${characterName} ${seed ? `(Seed / Reference State: ${seed})` : ""}
+- DO NOT ALTER: ${preserveAttributes.join(", ")}.
+- DO NOT ADD: Unrequested hats, accessories, background elements, or facial changes.
+- STYLE CONSISTENCY: Maintain exact photorealism, color palette, and art style of the original shot.
+
+[MODIFICATION INSTRUCTION]
+${userInstruction}
+
+[SPATIAL & LOGICAL RULES]
+- Integrate added objects seamlessly into the environment.
+- Respect lighting, shadows, and physical contact points (e.g., objects rest on surfaces, no floating artifacts).
+`.trim();
+}
+
 /**
  * Universal Dynamic Shot Prompt Engine
  * Constructs image prompts dynamically for ANY arbitrary character, enforcing framing, location, and action
  */
 export function buildDynamicShotPrompt(params: DynamicShotPromptParams): string {
-  if (params.basePrompt && params.basePrompt.includes('FRAME COMPOSITION:')) {
+  if (params.basePrompt && (params.basePrompt.includes('FRAME COMPOSITION:') || params.basePrompt.includes('CHARACTER IDENTITY LOCK') || params.basePrompt.includes('[STRICT IDENTITY LOCK & PRESERVATION]'))) {
     let prompt = params.basePrompt.trim();
     if (params.gender && !prompt.toLowerCase().includes(params.gender.toLowerCase())) {
       prompt += ` GENDER STRICT LOCK: Subject MUST strictly be ${params.gender}.`;

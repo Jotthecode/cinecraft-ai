@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { editShotPromptWithLLM } from '@/lib/openai';
-import { generateStoryboardImage } from '@/lib/imageEngine';
+import { generateStoryboardImage, buildShotEditPrompt } from '@/lib/imageEngine';
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,12 +39,20 @@ export async function POST(req: NextRequest) {
     const effectiveAction = shotMetadata?.action || action;
     const effectiveSeed = seed || 489201;
 
-    // 1. Strict Character Continuity & Base Reference Prompt Locks
+    // 1. Build Dynamic Structured Edit Prompt Template
+    const structuredEditPrompt = buildShotEditPrompt({
+      userInstruction: editInstruction,
+      characterName: effectiveVisualAnchor,
+      seed: effectiveSeed,
+      preserveAttributes: ["facial identity", "headwear", "clothing", "lighting", "camera angle", "background setting"],
+    });
+
+    // 2. Strict Character Continuity & Base Reference Prompt Locks
     const charLockHeader = `[CHARACTER IDENTITY LOCK - Seed: ${effectiveSeed}]: ${effectiveVisualAnchor}${gender ? `, ${gender}` : ''}.`;
     const baseImageLock = `[BASE IMAGE REFERENCE LOCK]: Maintain existing scene composition, background elements, actor identity, and lighting.`;
     const instructionUpdate = `[INSTRUCTION UPDATE]: ${editInstruction}. Do NOT change character face, clothing, or overall scene environment.`;
 
-    // 2. Dynamic LLM Prompt Rewriting while keeping visual anchor & character lock intact
+    // 3. Dynamic LLM Prompt Rewriting while keeping visual anchor & character lock intact
     let basePromptContext = originalPrompt || effectiveAction || 'Cinematic storyboard frame';
     let rewrittenPrompt = basePromptContext;
 
@@ -63,7 +71,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Synthesize composite delta prompt with strict locks prepended
-    const finalPrompt = `${charLockHeader} ${baseImageLock} ${instructionUpdate} ${rewrittenPrompt}`;
+    const finalPrompt = `${charLockHeader}\n\n${structuredEditPrompt}\n\n${baseImageLock}\n${instructionUpdate}\n\nORIGINAL FRAME CONTEXT: ${rewrittenPrompt}`;
 
     // 3. Img2Img Engine Call with low noise strength (0.35) for non-destructive delta modification
     const result = await generateStoryboardImage({
