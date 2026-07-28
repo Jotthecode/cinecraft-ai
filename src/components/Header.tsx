@@ -33,8 +33,8 @@ export const Header: React.FC<HeaderProps> = ({
   );
 
   const engineLabel = !mounted
-    ? 'Pollinations FLUX (Zero-Key Standalone)'
-    : activeLlmMode || (hasGeminiKey ? 'Gemini 2.0 Connected' : 'Pollinations FLUX (Zero-Key Standalone)');
+    ? 'Gemini 2.5 Flash Image & FLUX Engine'
+    : activeLlmMode || (hasGeminiKey ? 'Gemini 2.5 Connected' : 'Image-Conditioned Engine Active');
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl transition-all">
@@ -50,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
                 CineCraft AI
               </h1>
               <span className="rounded-full bg-gradient-to-r from-amber-500/20 to-indigo-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 ring-1 ring-amber-500/30">
-                Pollinations FLUX + Gemini
+                Gemini 2.5 + FLUX Kontext
               </span>
             </div>
             <p className="hidden text-xs text-slate-400 sm:block">

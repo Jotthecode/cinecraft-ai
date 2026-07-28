@@ -44,7 +44,7 @@ export default function Home() {
     openaiApiKey: '',
     falApiKey: '',
     replicateApiKey: '',
-    preferredModel: 'pollinations-flux',
+    preferredModel: 'gemini-2.5-flash-image',
   });
 
   const [storyboardData, setStoryboardData] = useState<StoryboardData | null>(null);

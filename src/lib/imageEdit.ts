@@ -290,25 +290,7 @@ export async function generateImageConditionedShot(params: ImageEditParams): Pro
     }
   }
 
-  // 4. PROVIDER 4: Pollinations FLUX Engine (Text-to-Image Last Resort Fallback)
-  try {
-    const cleanPrompt = encodeURIComponent(fullInstruction);
-    const numericSeed = params.seed || 489201;
-    const imageUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?model=flux&seed=${numericSeed}&width=1024&height=576&nologo=true`;
-
-    return {
-      imageUrl,
-      engine: "Pollinations FLUX.1 (Fallback Text-to-Image)",
-      promptUsed: fullInstruction,
-      hasReferenceImage: false,
-      isFallbackTextOnly: true,
-      consistencyWarning: "no reference image available, consistency not guaranteed.",
-    };
-  } catch (pollErr) {
-    console.warn("Pollinations FLUX error:", pollErr);
-  }
-
-  // 5. MOCK FALLBACK: SVG Canvas Storyboard Mock Renderer
+  // 4. MOCK FALLBACK: SVG Canvas Storyboard Mock Renderer
   const fallbackSvgUrl = generateSvgMockDataUrl(params.instruction, undefined, undefined, 'Eye-Level');
   return {
     imageUrl: fallbackSvgUrl,

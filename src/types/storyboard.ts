@@ -90,5 +90,5 @@ export interface ApiKeys {
   openaiApiKey?: string;
   falApiKey?: string;
   replicateApiKey?: string;
-  preferredModel?: 'pollinations-flux' | 'fal-flux-schnell' | 'fal-flux-dev' | 'replicate-flux-schnell' | 'replicate-flux-dev';
+  preferredModel?: 'gemini-2.5-flash-image' | 'fal-flux-schnell' | 'fal-flux-dev' | 'replicate-flux-schnell' | 'replicate-flux-dev';
 }

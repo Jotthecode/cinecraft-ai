@@ -1,5 +1,6 @@
 import { fal } from '@fal-ai/client';
 import Replicate from 'replicate';
+import { generateImageConditionedShot } from './imageEdit';
 
 export interface CinematicAdPromptParams {
   shot_type?: string;
@@ -140,34 +141,7 @@ export interface ImageGenResult {
 }
 
 /**
- * Pollinations FLUX Generator with Fixed Seed Lock for Multi-Shot Character Consistency
- */
-export function generatePollinationsFluxUrl(
-  prompt: string,
-  visualAnchor?: string,
-  gender?: string,
-  seed?: number
-): string {
-  const fullPrompt = buildDynamicShotPrompt({
-    visualAnchor: visualAnchor || '',
-    gender,
-    basePrompt: prompt,
-  });
-
-  const cleanPrompt = encodeURIComponent(fullPrompt);
-
-  let numericSeed = seed || 489201;
-  if (!seed && visualAnchor) {
-    let hash = 0;
-    for (let i = 0; i < visualAnchor.length; i++) {
-      hash = (hash << 5) - hash + visualAnchor.charCodeAt(i);
-      hash |= 0;
-    }
-    numericSeed = Math.abs(hash) % 999999;
-  }
-
-  return `https://image.pollinations.ai/prompt/${cleanPrompt}?model=flux&seed=${numericSeed}&width=1024&height=576&nologo=true`;
-}
+import { generateImageConditionedShot } from './imageEdit';
 
 /**
  * SVG / Canvas-based Storyboard Mock Renderer Fallback
@@ -219,7 +193,7 @@ export function generateSvgMockDataUrl(
 
   <!-- Badge header -->
   <rect x="40" y="30" width="220" height="32" rx="8" fill="rgba(99, 102, 241, 0.25)" stroke="#6366f1" stroke-width="1"/>
-  <text x="52" y="51" fill="#a5b4fc" font-family="sans-serif" font-size="12" font-weight="bold">FLUX.1 STORYBOARD FRAME</text>
+  <text x="52" y="51" fill="#a5b4fc" font-family="sans-serif" font-size="12" font-weight="bold">CINECRAFT FRAME</text>
 
   <!-- Camera angle badge -->
   <rect x="270" y="30" width="160" height="32" rx="8" fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" stroke-width="1"/>
@@ -244,97 +218,26 @@ export function generateSvgMockDataUrl(
  * Universal Image Generation Router
  */
 export async function generateStoryboardImage(params: ImageGenerationParams): Promise<ImageGenResult> {
-  const modelChoice = params.modelChoice || 'pollinations-flux';
-  const falKey = params.falApiKey || process.env.FAL_KEY;
-  const replicateToken = params.replicateApiKey || process.env.REPLICATE_API_TOKEN;
+  const refImages: string[] = [];
+  if (params.characterReferenceImage) {
+    refImages.push(params.characterReferenceImage);
+  }
 
-  const fullPrompt = buildDynamicShotPrompt({
-    visualAnchor: params.visualAnchor || '',
-    gender: params.gender,
-    location: params.location,
-    cameraAngle: params.cameraAngle,
-    shotType: params.shotType,
-    action: params.action,
-    basePrompt: params.prompt,
+  const result = await generateImageConditionedShot({
+    instruction: params.prompt,
+    sourceImage: params.originalShotImage,
+    referenceImages: refImages,
+    denoisingStrength: params.denoisingStrength,
+    seed: params.seed,
+    geminiApiKey: process.env.GEMINI_API_KEY,
+    falApiKey: params.falApiKey || process.env.FAL_KEY,
+    replicateApiKey: params.replicateApiKey || process.env.REPLICATE_API_TOKEN,
+    modelChoice: params.modelChoice,
   });
 
-  // 1. Fal.ai Engine
-  if (modelChoice.startsWith('fal') && falKey) {
-    try {
-      fal.config({ credentials: falKey });
-      const isDev = modelChoice === 'fal-flux-dev';
-      const modelId = isDev ? 'fal-ai/flux-1/dev' : 'fal-ai/flux-1/schnell';
-
-      const refImage = params.originalShotImage || params.characterReferenceImage;
-      let res: any;
-
-      if (refImage && (refImage.startsWith('http') || refImage.startsWith('data:image'))) {
-        try {
-          const inputObj: any = {
-            prompt: fullPrompt,
-            image_url: refImage,
-            strength: params.denoisingStrength ?? 0.35,
-            image_size: 'landscape_16_9',
-          };
-          res = await fal.subscribe('fal-ai/flux/dev/image-to-image', { input: inputObj });
-        } catch (e) {
-          const inputObj: any = { prompt: fullPrompt, image_size: 'landscape_16_9' };
-          res = await fal.subscribe(modelId, { input: inputObj });
-        }
-      } else {
-        const inputObj: any = { prompt: fullPrompt, image_size: 'landscape_16_9' };
-        res = await fal.subscribe(modelId, { input: inputObj });
-      }
-
-      const imageUrl = res.data?.images?.[0]?.url || res.data?.image?.url;
-      if (imageUrl) {
-        return { imageUrl, engine: `Fal.ai (${modelId})`, promptUsed: fullPrompt };
-      }
-    } catch (err) {
-      console.warn('Fal.ai error:', err);
-    }
-  }
-
-  // 2. Replicate Engine
-  if (modelChoice.startsWith('replicate') && replicateToken) {
-    try {
-      const replicate = new Replicate({ auth: replicateToken });
-      const model = modelChoice === 'replicate-flux-dev' ? 'black-forest-labs/flux-dev' : 'black-forest-labs/flux-schnell';
-      const inputObj: any = { prompt: fullPrompt, aspect_ratio: '16:9' };
-
-      const refImage = params.originalShotImage || params.characterReferenceImage;
-      if (refImage && (refImage.startsWith('http') || refImage.startsWith('data:image'))) {
-        inputObj.image = refImage;
-        inputObj.prompt_strength = 1 - (params.denoisingStrength ?? 0.35);
-      }
-
-      const output: any = await replicate.run(model, { input: inputObj });
-      const imageUrl = Array.isArray(output) ? output[0] : output;
-      if (imageUrl) {
-        return { imageUrl: String(imageUrl), engine: `Replicate (${model})`, promptUsed: fullPrompt };
-      }
-    } catch (err) {
-      console.warn('Replicate error:', err);
-    }
-  }
-
-  // 3. Pollinations FLUX Engine with Fixed Seed Lock
-  try {
-    const imageUrl = generatePollinationsFluxUrl(params.prompt, params.visualAnchor, params.gender, params.seed);
-    return {
-      imageUrl,
-      engine: 'Pollinations FLUX.1 Engine (Fixed Seed Locked)',
-      promptUsed: fullPrompt,
-    };
-  } catch (err) {
-    console.warn('Pollinations FLUX error, falling back to SVG Mock:', err);
-  }
-
-  // 4. SVG Canvas Mock Fallback
-  const fallbackSvgUrl = generateSvgMockDataUrl(params.prompt, params.visualAnchor, params.gender, params.cameraAngle);
   return {
-    imageUrl: fallbackSvgUrl,
-    engine: 'SVG Canvas Storyboard Mock Renderer',
-    promptUsed: fullPrompt,
+    imageUrl: result.imageUrl,
+    engine: result.engine,
+    promptUsed: result.promptUsed,
   };
 }
