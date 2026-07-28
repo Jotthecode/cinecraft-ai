@@ -183,8 +183,12 @@ async function generateAllShotsSequentially(
         shot.status = 'completed';
         allGeneratedUrls.push(data.imageUrl);
 
-        if (payloadConfig.mainChar && !payloadConfig.mainChar.reference_image_url) {
-          payloadConfig.mainChar.reference_image_url = data.imageUrl;
+        if (payloadConfig.mainChar) {
+          if (!payloadConfig.mainChar.reference_image_url) {
+            payloadConfig.mainChar.reference_image_url = data.imageUrl;
+            payloadConfig.mainChar.referenceImageUrls = [data.imageUrl];
+          }
+          payloadConfig.characterReferenceImage = payloadConfig.mainChar.reference_image_url;
         }
 
         results.push({ ...shot, imageUrl: data.imageUrl });
@@ -387,7 +391,11 @@ const runFullPipelineGeneration = async (targetStoryboard: StoryboardData) => {
         ...prev,
         characters: prev.characters.map((char) =>
           char.id === charId || char.name.toLowerCase() === charId.toLowerCase()
-            ? { ...char, reference_image_url: imageUrl }
+            ? {
+                ...char,
+                reference_image_url: imageUrl,
+                referenceImageUrls: Array.from(new Set([...(char.referenceImageUrls || []), imageUrl])),
+              }
             : char
         ),
       };

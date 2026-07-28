@@ -8,6 +8,7 @@ export interface CharacterAnchor {
   seed: number; // Fixed random integer seed for multi-shot visual consistency
   reference_prompt?: string;
   reference_image_url?: string;
+  referenceImageUrls?: string[]; // Array of canonical face-card reference images
 }
 
 export type ShotType = 
@@ -49,6 +50,9 @@ export interface Shot {
   status: 'idle' | 'generating' | 'editing' | 'completed' | 'error';
   image_url?: string;
   original_image_url?: string;
+  sourceImageUrl?: string; // Current rendered image conditioned on for edits
+  hasReferenceImage?: boolean; // Indicates if character reference image was available
+  consistencyWarning?: string; // Visible warning if text-to-image fallback was used
   original_prompt?: string;
   edit_history?: ShotEditRecord[];
   error_message?: string;

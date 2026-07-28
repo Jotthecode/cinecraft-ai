@@ -76,6 +76,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <Camera className="h-3 w-3 text-amber-400" />
             {shot.camera_angle}
           </span>
+          {shot.consistencyWarning && (
+            <span
+              className="flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 ring-1 ring-amber-500/20"
+              title={shot.consistencyWarning}
+            >
+              <AlertCircle className="h-2.5 w-2.5 text-amber-400" />
+              Fallback Text-Mode
+            </span>
+          )}
           {shot.edit_history && shot.edit_history.length > 0 && (
             <span className="flex items-center gap-1 rounded-md bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300 ring-1 ring-purple-500/20">
               <History className="h-2.5 w-2.5" />
