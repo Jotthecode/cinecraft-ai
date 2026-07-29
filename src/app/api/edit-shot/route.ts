@@ -57,9 +57,8 @@ export async function POST(req: NextRequest) {
       editType,
       denoisingStrength: editType === 'camera_angle' ? 0.65 : 0.35,
       seed: seed || 489201,
+      openaiApiKey: body.openaiApiKey || process.env.OPENAI_API_KEY,
       geminiApiKey: geminiApiKey || process.env.GEMINI_API_KEY,
-      falApiKey: falApiKey || process.env.FAL_KEY,
-      replicateApiKey: replicateApiKey || process.env.REPLICATE_API_TOKEN,
       modelChoice,
     });
 
@@ -72,6 +71,8 @@ export async function POST(req: NextRequest) {
       disclaimer: disclaimer || result.disclaimer,
       hasReferenceImage: result.hasReferenceImage,
       consistencyWarning: result.consistencyWarning,
+      isPaid: result.isPaid,
+      paidWarning: result.paidWarning,
     });
   } catch (error: any) {
     console.error("API /api/edit-shot error:", error);

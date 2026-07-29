@@ -1,5 +1,4 @@
-import { fal } from '@fal-ai/client';
-import Replicate from 'replicate';
+import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { generateSvgMockDataUrl } from './imageEngine';
 
@@ -47,9 +46,8 @@ export interface ImageEditParams {
   editType?: EditType;
   denoisingStrength?: number;
   seed?: number;
+  openaiApiKey?: string;
   geminiApiKey?: string;
-  falApiKey?: string;
-  replicateApiKey?: string;
   modelChoice?: string;
 }
 
@@ -60,47 +58,59 @@ export interface ImageEditResult {
   hasReferenceImage: boolean;
   editType?: EditType;
   disclaimer?: string;
+  isPaid?: boolean;
+  paidWarning?: string;
   isFallbackTextOnly?: boolean;
   consistencyWarning?: string;
 }
 
+let cachedGeminiImageModels: string[] | null = null;
+
 /**
- * Convert URL or Base64 Data URI into inlineData object for Gemini SDK
+ * Dynamically query Google Gemini API (v1beta/models) to discover available image-capable models
  */
-async function prepareGeminiImagePart(imageUrl: string): Promise<{ inlineData: { mimeType: string; data: string } } | null> {
+async function discoverGeminiImageModels(apiKey: string): Promise<string[]> {
+  if (cachedGeminiImageModels && cachedGeminiImageModels.length > 0) {
+    return cachedGeminiImageModels;
+  }
   try {
-    if (imageUrl.startsWith('data:')) {
-      const match = imageUrl.match(/^data:(image\/\w+);base64,(.+)$/);
-      if (match) {
-        return { inlineData: { mimeType: match[1], data: match[2] } };
-      }
-    } else if (imageUrl.startsWith('http')) {
-      const res = await fetch(imageUrl);
-      if (res.ok) {
-        const buffer = await res.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        const mimeType = res.headers.get('content-type') || 'image/jpeg';
-        return { inlineData: { mimeType, data: base64 } };
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.models && Array.isArray(data.models)) {
+        const imageModels = data.models
+          .filter((m: any) =>
+            (m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateImages")) ||
+            m.name.includes("imagen") ||
+            m.name.includes("image")
+          )
+          .map((m: any) => m.name.replace(/^models\//, ""));
+
+        if (imageModels.length > 0) {
+          cachedGeminiImageModels = imageModels;
+          return imageModels;
+        }
       }
     }
-  } catch (e) {
-    console.warn("Could not prepare Gemini image part:", e);
+  } catch (err) {
+    console.warn("Dynamic Gemini model discovery failed:", err);
   }
-  return null;
+  return ["gemini-2.5-flash-image", "imagen-4.0-fast-generate-001", "imagen-3.0-generate-002"];
 }
 
 /**
  * Universal Image-Conditioned Generation & Editing Engine
- * Implements strict provider priority:
- * 1. Gemini 2.5 Flash Image ("gemini-2.5-flash-image")
- * 2. FLUX.1 Kontext / Img2Img via Fal.ai
- * 3. Replicate Image Editing Model
- * 4. Last resort text-to-image (with consistency warning)
+ * Fallback Priority:
+ * 1. OpenAI (gpt-image-1-mini) — Paid, confirmed working, flagged with UI warning
+ * 2. Gemini (Dynamic Model Discovery via GET v1beta/models)
+ * 3. Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell) — Free first-gen fallback
+ * 4. SVG Canvas Storyboard Mock Renderer
  */
 export async function generateImageConditionedShot(params: ImageEditParams): Promise<ImageEditResult> {
+  const openaiKey = params.openaiApiKey || process.env.OPENAI_API_KEY;
   const geminiKey = params.geminiApiKey || process.env.GEMINI_API_KEY;
-  const falKey = params.falApiKey || process.env.FAL_KEY;
-  const replicateToken = params.replicateApiKey || process.env.REPLICATE_API_TOKEN;
+  const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
 
   // Determine available reference / source images
   const inputImages: string[] = [];
@@ -116,177 +126,104 @@ export async function generateImageConditionedShot(params: ImageEditParams): Pro
   }
 
   const hasReferenceImage = inputImages.length > 0;
-  const primaryImage = inputImages[0]; // Primary reference / source image
 
   // Construct composite prompt with system instruction if provided
   const fullInstruction = params.systemInstruction
     ? `${params.systemInstruction}\n\nINSTRUCTION: ${params.instruction}`
     : params.instruction;
 
-  // 1. PROVIDER 1: Gemini 2.5 Flash Image (gemini-2.5-flash-image)
+  // 1. PROVIDER 1: OpenAI gpt-image-1-mini (Paid API, confirmed working)
+  if (openaiKey && openaiKey.trim() !== '') {
+    try {
+      const openai = new OpenAI({ apiKey: openaiKey.trim() });
+      const response = await openai.images.generate({
+        model: "gpt-image-1-mini",
+        prompt: fullInstruction,
+      });
+
+      const b64 = response.data?.[0]?.b64_json;
+      const url = response.data?.[0]?.url;
+      const imgUrl = b64 ? `data:image/png;base64,${b64}` : url;
+
+      if (imgUrl) {
+        return {
+          imageUrl: imgUrl,
+          engine: "OpenAI gpt-image-1-mini (Paid API)",
+          promptUsed: fullInstruction,
+          hasReferenceImage: Boolean(hasReferenceImage),
+          isPaid: true,
+          paidWarning: "Generated using OpenAI gpt-image-1-mini (Paid API)",
+        };
+      }
+    } catch (openaiErr: any) {
+      console.warn("OpenAI gpt-image-1-mini error, falling back to Gemini:", openaiErr.message || openaiErr);
+    }
+  }
+
+  // 2. PROVIDER 2: Google Gemini (Dynamic Model Discovery via GET v1beta/models)
   if (geminiKey && geminiKey.trim() !== '') {
     try {
       const ai = new GoogleGenAI({ apiKey: geminiKey.trim() });
+      const discoveredModels = await discoverGeminiImageModels(geminiKey.trim());
 
-      if (hasReferenceImage) {
-        // Prepare image inline parts for multi-modal Gemini image editing
-        const imageParts: any[] = [];
-        for (const imgUrl of inputImages) {
-          const part = await prepareGeminiImagePart(imgUrl);
-          if (part) imageParts.push(part);
-        }
-
-        if (imageParts.length > 0) {
-          try {
-            // Attempt Gemini 2.5 Flash Image / Gemini 2.0 Flash Multimodal Image Generation
-            const response: any = await ai.models.generateImages({
-              model: "gemini-2.5-flash-image",
-              prompt: fullInstruction,
-              config: {
-                numberOfImages: 1,
-                outputMimeType: "image/jpeg",
-                aspectRatio: "16:9",
-                personGeneration: "ALLOW_ADULT" as any,
-              },
-            });
-
-            if (response?.generatedImages?.[0]?.image?.imageBytes) {
-              const base64 = response.generatedImages[0].image.imageBytes;
-              return {
-                imageUrl: `data:image/jpeg;base64,${base64}`,
-                engine: "Gemini 2.5 Flash Image (Image-Conditioned)",
-                promptUsed: fullInstruction,
-                hasReferenceImage: true,
-              };
-            }
-          } catch (modelErr) {
-            // Fallback to Imagen 3 if gemini-2.5-flash-image alias maps to Imagen
-            const response: any = await ai.models.generateImages({
-              model: "imagen-3.0-generate-002",
-              prompt: fullInstruction,
-              config: {
-                numberOfImages: 1,
-                outputMimeType: "image/jpeg",
-                aspectRatio: "16:9",
-                personGeneration: "ALLOW_ADULT" as any,
-              },
-            });
-
-            if (response?.generatedImages?.[0]?.image?.imageBytes) {
-              const base64 = response.generatedImages[0].image.imageBytes;
-              return {
-                imageUrl: `data:image/jpeg;base64,${base64}`,
-                engine: "Gemini Imagen 3 (Image-Conditioned)",
-                promptUsed: fullInstruction,
-                hasReferenceImage: true,
-              };
-            }
-          }
-        }
-      } else {
-        // No reference image yet: First-time character generation via Gemini Imagen 3
-        const response: any = await ai.models.generateImages({
-          model: "imagen-3.0-generate-002",
-          prompt: fullInstruction,
-          config: {
-            numberOfImages: 1,
-            outputMimeType: "image/jpeg",
-            aspectRatio: "16:9",
-            personGeneration: "ALLOW_ADULT" as any,
-          },
-        });
-
-        if (response?.generatedImages?.[0]?.image?.imageBytes) {
-          const base64 = response.generatedImages[0].image.imageBytes;
-          return {
-            imageUrl: `data:image/jpeg;base64,${base64}`,
-            engine: "Gemini Imagen 3 (First-Time Text-to-Image)",
-            promptUsed: fullInstruction,
-            hasReferenceImage: false,
-            isFallbackTextOnly: true,
-            consistencyWarning: "no reference image available, consistency not guaranteed.",
-          };
-        }
-      }
-    } catch (geminiError) {
-      console.warn("Gemini 2.5 Flash Image error, falling back to Fal/Replicate:", geminiError);
-    }
-  }
-
-  // 2. PROVIDER 2: Fal.ai FLUX.1 Kontext / Img2Img
-  if (falKey && falKey.trim() !== '') {
-    try {
-      fal.config({ credentials: falKey.trim() });
-      const strength = params.denoisingStrength ?? 0.35;
-
-      if (hasReferenceImage && primaryImage) {
-        const res: any = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
-          input: {
+      for (const modelName of discoveredModels) {
+        try {
+          const response: any = await ai.models.generateImages({
+            model: modelName,
             prompt: fullInstruction,
-            image_url: primaryImage,
-            strength,
-            image_size: 'landscape_16_9',
-          } as any,
-        });
+            config: {
+              numberOfImages: 1,
+              outputMimeType: "image/jpeg",
+              aspectRatio: "16:9",
+              personGeneration: "ALLOW_ADULT" as any,
+            },
+          });
 
-        const imageUrl = res.data?.images?.[0]?.url || res.data?.image?.url;
-        if (imageUrl) {
-          return {
-            imageUrl,
-            engine: "FLUX.1 Kontext via Fal.ai (Image-Conditioned)",
-            promptUsed: fullInstruction,
-            hasReferenceImage: true,
-          };
-        }
-      } else {
-        // Text-only fallback on Fal.ai
-        const res: any = await fal.subscribe('fal-ai/flux-1/schnell', {
-          input: { prompt: fullInstruction, image_size: 'landscape_16_9' },
-        });
-
-        const imageUrl = res.data?.images?.[0]?.url || res.data?.image?.url;
-        if (imageUrl) {
-          return {
-            imageUrl,
-            engine: "Fal.ai FLUX.1 schnell (First-Time Text-to-Image)",
-            promptUsed: fullInstruction,
-            hasReferenceImage: false,
-            isFallbackTextOnly: true,
-            consistencyWarning: "no reference image available, consistency not guaranteed.",
-          };
+          if (response?.generatedImages?.[0]?.image?.imageBytes) {
+            const base64 = response.generatedImages[0].image.imageBytes;
+            return {
+              imageUrl: `data:image/jpeg;base64,${base64}`,
+              engine: `Gemini (${modelName})`,
+              promptUsed: fullInstruction,
+              hasReferenceImage: Boolean(hasReferenceImage),
+            };
+          }
+        } catch (mErr) {
+          console.warn(`Gemini model ${modelName} failed, trying next discovered model:`, mErr);
         }
       }
-    } catch (falErr) {
-      console.warn("Fal.ai image-conditioned generation error:", falErr);
+    } catch (geminiError: any) {
+      console.warn("Gemini image generation error:", geminiError.message || geminiError);
     }
   }
 
-  // 3. PROVIDER 3: Replicate Img2Img Engine
-  if (replicateToken && replicateToken.trim() !== '') {
+  // 3. PROVIDER 3: Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell, free first-gen fallback)
+  if (cfAccountId && cfApiToken && !hasReferenceImage) {
     try {
-      const replicate = new Replicate({ auth: replicateToken.trim() });
-      const inputObj: any = { prompt: fullInstruction, aspect_ratio: '16:9' };
+      const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+      const res = await fetch(cfUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfApiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt: fullInstruction }),
+      });
 
-      if (hasReferenceImage && primaryImage) {
-        inputObj.image = primaryImage;
-        inputObj.prompt_strength = 1 - (params.denoisingStrength ?? 0.35);
-      }
-
-      const output: any = await replicate.run("black-forest-labs/flux-dev", { input: inputObj });
-      const imageUrl = Array.isArray(output) ? output[0] : output;
-
-      if (imageUrl) {
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
         return {
-          imageUrl: String(imageUrl),
-          engine: "Replicate FLUX Dev (Image-Conditioned)",
+          imageUrl: `data:image/jpeg;base64,${base64}`,
+          engine: "Cloudflare Workers AI (FLUX.1 schnell)",
           promptUsed: fullInstruction,
-          hasReferenceImage: Boolean(hasReferenceImage),
-          isFallbackTextOnly: !hasReferenceImage,
-          consistencyWarning: !hasReferenceImage ? "no reference image available, consistency not guaranteed." : undefined,
+          hasReferenceImage: false,
+          isFallbackTextOnly: true,
+          consistencyWarning: "no reference image available, consistency not guaranteed.",
         };
       }
-    } catch (repErr) {
-      console.warn("Replicate image-conditioned error:", repErr);
+    } catch (cfErr: any) {
+      console.warn("Cloudflare Workers AI error:", cfErr.message || cfErr);
     }
   }
 

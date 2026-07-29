@@ -53,9 +53,8 @@ export async function POST(req: NextRequest) {
       instruction: fullPrompt,
       referenceImages: refImagesList,
       seed: seed || 489201,
+      openaiApiKey: body.openaiApiKey || process.env.OPENAI_API_KEY,
       geminiApiKey: geminiApiKey || process.env.GEMINI_API_KEY,
-      falApiKey: falApiKey || process.env.FAL_KEY,
-      replicateApiKey: replicateApiKey || process.env.REPLICATE_API_TOKEN,
       modelChoice,
     });
 
@@ -66,6 +65,8 @@ export async function POST(req: NextRequest) {
       promptUsed: result.promptUsed,
       hasReferenceImage: result.hasReferenceImage,
       consistencyWarning: result.consistencyWarning,
+      isPaid: result.isPaid,
+      paidWarning: result.paidWarning,
     });
   } catch (error: any) {
     console.error("API /api/generate-image error:", error);

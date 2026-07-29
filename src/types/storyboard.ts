@@ -54,6 +54,8 @@ export interface Shot {
   sourceImageUrl?: string; // Current rendered image conditioned on for edits
   hasReferenceImage?: boolean; // Indicates if character reference image was available
   consistencyWarning?: string; // Visible warning if text-to-image fallback was used
+  paidWarning?: string; // Visible warning if paid OpenAI API was used
+  isPaid?: boolean;
   lastEditInstruction?: string;
   editType?: 'local_detail' | 'camera_angle' | 'new_character';
   disclaimer?: string; // Edit-specific UI disclaimer (e.g. for camera angle changes)

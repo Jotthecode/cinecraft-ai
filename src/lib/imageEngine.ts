@@ -229,9 +229,8 @@ export async function generateStoryboardImage(params: ImageGenerationParams): Pr
     referenceImages: refImages,
     denoisingStrength: params.denoisingStrength,
     seed: params.seed,
+    openaiApiKey: process.env.OPENAI_API_KEY,
     geminiApiKey: process.env.GEMINI_API_KEY,
-    falApiKey: params.falApiKey || process.env.FAL_KEY,
-    replicateApiKey: params.replicateApiKey || process.env.REPLICATE_API_TOKEN,
     modelChoice: params.modelChoice,
   });
 

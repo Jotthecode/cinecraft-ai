@@ -181,6 +181,10 @@ async function generateAllShotsSequentially(
         shot.image_url = data.imageUrl;
         shot.original_image_url = shot.original_image_url || data.imageUrl;
         shot.status = 'completed';
+        shot.hasReferenceImage = data.hasReferenceImage;
+        shot.consistencyWarning = data.consistencyWarning;
+        shot.paidWarning = data.paidWarning;
+        shot.isPaid = data.isPaid;
         allGeneratedUrls.push(data.imageUrl);
 
         if (payloadConfig.mainChar) {
@@ -458,6 +462,10 @@ const runFullPipelineGeneration = async (targetStoryboard: StoryboardData) => {
         status: 'completed',
         image_url: imageUrl,
         original_image_url: targetShot.original_image_url || imageUrl,
+        hasReferenceImage: data.hasReferenceImage,
+        consistencyWarning: data.consistencyWarning,
+        paidWarning: data.paidWarning,
+        isPaid: data.isPaid,
       });
 
       if (mainChar && !mainChar.reference_image_url) {
