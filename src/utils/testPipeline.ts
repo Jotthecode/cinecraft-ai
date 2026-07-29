@@ -9,9 +9,9 @@ export interface TestChecklistItem {
 /**
  * Manual QA Checklist Script for AI Storyboard Image Pipeline
  * Verifies Requirements 1, 2, and 3:
- * 1. Character Identity & Reference Image Conditioning
- * 2. Targeted In-Place Edit (Local Detail Change)
- * 3. Isolated Camera Angle Re-Framing with UI Disclaimer
+ * 1. Character Identity & Reference Image Conditioning via gemini-2.5-flash-image
+ * 2. Targeted In-Place Edit (Add table lamp in background)
+ * 3. Isolated Camera Angle Re-Framing (Change to low-angle close-up)
  */
 export async function runImagePipelineManualTest(): Promise<TestChecklistItem[]> {
   console.log("=== STARTING QA CHECKLIST MANUAL TEST SUITE ===");
@@ -55,30 +55,30 @@ export async function runImagePipelineManualTest(): Promise<TestChecklistItem[]>
     });
   }
 
-  // Step 3: Requirement 2 Edit (Targeted In-Place Detail Modification)
-  console.log("Step 3: Requirement 2 Local Detail Edit on Shot 2...");
+  // Step 3: Requirement 2 Edit (Add table lamp in background)
+  console.log("Step 3: Requirement 2 In-Place Edit ('Add a table lamp in background')...");
   const sourceShotImage = generatedShots[1] || referenceImageUrl;
-  const req2Instruction = "Add a steaming brass cup of coffee on the wooden table next to the chai glass.";
+  const req2Instruction = "Add a table lamp in background";
   const req2Classification = classifyEditInstruction(req2Instruction);
 
   const editReq2Result = await generateImageConditionedShot({
     instruction: req2Instruction,
     sourceImage: sourceShotImage,
     referenceImages: [referenceImageUrl],
-    systemInstruction: "This is a targeted edit, not a new image. Preserve composition, camera angle, character identity, clothing, pose, and lighting EXACTLY as shown in the source image. Apply ONLY this change: Add a steaming brass cup of coffee on the wooden table next to the chai glass. Do not alter anything else.",
+    systemInstruction: "This is a targeted edit, not a new image. Preserve composition, camera angle, character identity, clothing, pose, and lighting EXACTLY as shown in the source image. Apply ONLY this change: Add a table lamp in background. Do not alter anything else.",
     editType: req2Classification.editType,
     denoisingStrength: 0.35,
   });
 
   checklistResults.push({
-    step: "Requirement 2: In-Place Local Detail Edit (Source Image Conditioned)",
+    step: "Requirement 2: In-Place Local Detail Edit ('Add a table lamp in background')",
     passed: Boolean(editReq2Result.imageUrl) && req2Classification.editType === 'local_detail',
     details: `Engine: ${editReq2Result.engine}, Classified Type: ${req2Classification.editType}`,
   });
 
-  // Step 4: Requirement 3 Edit (Isolated Camera Angle / Framing Change)
-  console.log("Step 4: Requirement 3 Camera Angle Re-Framing Edit on Shot 2...");
-  const req3Instruction = "Change camera angle to dramatic low-angle shot looking up";
+  // Step 4: Requirement 3 Edit (Change to low-angle close-up)
+  console.log("Step 4: Requirement 3 Camera Angle Re-Framing ('Change to low-angle close-up')...");
+  const req3Instruction = "Change to low-angle close-up";
   const req3Classification = classifyEditInstruction(req3Instruction);
 
   const editReq3Result = await generateImageConditionedShot({
@@ -91,7 +91,7 @@ export async function runImagePipelineManualTest(): Promise<TestChecklistItem[]>
   });
 
   checklistResults.push({
-    step: "Requirement 3: Isolated Camera Angle Re-Framing with UI Disclaimer",
+    step: "Requirement 3: Isolated Camera Angle Re-Framing ('Change to low-angle close-up')",
     passed: Boolean(editReq3Result.imageUrl) && req3Classification.editType === 'camera_angle' && Boolean(req3Classification.disclaimer),
     details: `Engine: ${editReq3Result.engine}, Classified Type: ${req3Classification.editType}, Disclaimer: "${req3Classification.disclaimer}"`,
   });

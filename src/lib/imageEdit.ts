@@ -2,6 +2,18 @@ import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import { generateSvgMockDataUrl } from './imageEngine';
 
+
+
+/**
+ * Documented Gemini Image-Capable Alternative Models for configuration reference
+ */
+export const GEMINI_ALTERNATIVE_MODELS = [
+  "gemini-3-pro-image",
+  "gemini-3.1-flash-image",
+  "gemini-3.1-flash-lite-image",
+  "imagen-4.0-fast-generate-001"
+];
+
 export type EditType = 'local_detail' | 'camera_angle' | 'new_character';
 
 /**
@@ -64,51 +76,44 @@ export interface ImageEditResult {
   consistencyWarning?: string;
 }
 
-let cachedGeminiImageModels: string[] | null = null;
-
 /**
- * Dynamically query Google Gemini API (v1beta/models) to discover available image-capable models
+ * Convert URL or Base64 Data URI into inlineData object for Gemini SDK multimodal generateContent
  */
-async function discoverGeminiImageModels(apiKey: string): Promise<string[]> {
-  if (cachedGeminiImageModels && cachedGeminiImageModels.length > 0) {
-    return cachedGeminiImageModels;
-  }
+async function prepareGeminiImagePart(imageUrl: string): Promise<{ inlineData: { mimeType: string; data: string } } | null> {
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.models && Array.isArray(data.models)) {
-        const imageModels = data.models
-          .filter((m: any) =>
-            (m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateImages")) ||
-            m.name.includes("imagen") ||
-            m.name.includes("image")
-          )
-          .map((m: any) => m.name.replace(/^models\//, ""));
-
-        if (imageModels.length > 0) {
-          cachedGeminiImageModels = imageModels;
-          return imageModels;
-        }
+    if (imageUrl.startsWith('data:')) {
+      const match = imageUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (match) {
+        return { inlineData: { mimeType: match[1], data: match[2] } };
+      }
+    } else if (imageUrl.startsWith('http')) {
+      const res = await fetch(imageUrl);
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        const mimeType = res.headers.get('content-type') || 'image/jpeg';
+        return { inlineData: { mimeType, data: base64 } };
       }
     }
-  } catch (err) {
-    console.warn("Dynamic Gemini model discovery failed:", err);
+  } catch (e) {
+    console.warn("Could not prepare Gemini image part:", e);
   }
-  return ["gemini-2.5-flash-image", "imagen-4.0-fast-generate-001", "imagen-3.0-generate-002"];
+  return null;
 }
 
 /**
  * Universal Image-Conditioned Generation & Editing Engine
+ * Primary Provider: Gemini 2.5 Flash Image (gemini-2.5-flash-image) via generateContent multimodal API
  * Fallback Priority:
- * 1. OpenAI (gpt-image-1-mini) — Paid, confirmed working, flagged with UI warning
- * 2. Gemini (Dynamic Model Discovery via GET v1beta/models)
- * 3. Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell) — Free first-gen fallback
- * 4. SVG Canvas Storyboard Mock Renderer
+ * 1. Gemini 2.5 Flash Image (gemini-2.5-flash-image, multimodal image-conditioned)
+ * 2. OpenAI (gpt-image-1-mini, paid, confirmed working)
+ * 3. Cloudflare Workers AI (@cf/black-forest-labs/flux-1-schnell, free first-gen fallback)
+ * 4. Imagen 4 (imagen-4.0-fast-generate-001, text-to-image last resort for first-time creation only)
+ * 5. SVG Canvas Storyboard Mock Renderer (offline dev fallback)
  */
 export async function generateImageConditionedShot(params: ImageEditParams): Promise<ImageEditResult> {
-  const openaiKey = params.openaiApiKey || process.env.OPENAI_API_KEY;
   const geminiKey = params.geminiApiKey || process.env.GEMINI_API_KEY;
+  const openaiKey = params.openaiApiKey || process.env.OPENAI_API_KEY;
   const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
 
@@ -132,7 +137,50 @@ export async function generateImageConditionedShot(params: ImageEditParams): Pro
     ? `${params.systemInstruction}\n\nINSTRUCTION: ${params.instruction}`
     : params.instruction;
 
-  // 1. PROVIDER 1: OpenAI gpt-image-1-mini (Paid API, confirmed working)
+  // 1. PROVIDER 1: Gemini 2.5 Flash Image (gemini-2.5-flash-image) via generateContent
+  if (geminiKey && geminiKey.trim() !== '') {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiKey.trim() });
+      const contentsParts: any[] = [];
+
+      // Prepare multimodal inlineData image parts for reference / source images
+      if (hasReferenceImage) {
+        for (const imgUrl of inputImages) {
+          const part = await prepareGeminiImagePart(imgUrl);
+          if (part) {
+            contentsParts.push(part);
+          }
+        }
+      }
+
+      // Append text instruction part
+      contentsParts.push({ text: fullInstruction });
+
+      // Primary Multimodal Call to gemini-2.5-flash-image via generateContent
+      const response: any = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: contentsParts,
+      });
+
+      const parts = response?.candidates?.[0]?.content?.parts || [];
+      const imagePart = parts.find((p: any) => p.inlineData && p.inlineData.data);
+
+      if (imagePart) {
+        const mime = imagePart.inlineData.mimeType || 'image/jpeg';
+        const b64 = imagePart.inlineData.data;
+        return {
+          imageUrl: `data:${mime};base64,${b64}`,
+          engine: "Gemini 2.5 Flash Image (Multimodal Image-Conditioned)",
+          promptUsed: fullInstruction,
+          hasReferenceImage: Boolean(hasReferenceImage),
+        };
+      }
+    } catch (geminiError: any) {
+      console.warn("Gemini 2.5 Flash Image generateContent error, trying next provider:", geminiError.message || geminiError);
+    }
+  }
+
+  // 2. PROVIDER 2: OpenAI gpt-image-1-mini (Paid API, confirmed working)
   if (openaiKey && openaiKey.trim() !== '') {
     try {
       const openai = new OpenAI({ apiKey: openaiKey.trim() });
@@ -156,44 +204,7 @@ export async function generateImageConditionedShot(params: ImageEditParams): Pro
         };
       }
     } catch (openaiErr: any) {
-      console.warn("OpenAI gpt-image-1-mini error, falling back to Gemini:", openaiErr.message || openaiErr);
-    }
-  }
-
-  // 2. PROVIDER 2: Google Gemini (Dynamic Model Discovery via GET v1beta/models)
-  if (geminiKey && geminiKey.trim() !== '') {
-    try {
-      const ai = new GoogleGenAI({ apiKey: geminiKey.trim() });
-      const discoveredModels = await discoverGeminiImageModels(geminiKey.trim());
-
-      for (const modelName of discoveredModels) {
-        try {
-          const response: any = await ai.models.generateImages({
-            model: modelName,
-            prompt: fullInstruction,
-            config: {
-              numberOfImages: 1,
-              outputMimeType: "image/jpeg",
-              aspectRatio: "16:9",
-              personGeneration: "ALLOW_ADULT" as any,
-            },
-          });
-
-          if (response?.generatedImages?.[0]?.image?.imageBytes) {
-            const base64 = response.generatedImages[0].image.imageBytes;
-            return {
-              imageUrl: `data:image/jpeg;base64,${base64}`,
-              engine: `Gemini (${modelName})`,
-              promptUsed: fullInstruction,
-              hasReferenceImage: Boolean(hasReferenceImage),
-            };
-          }
-        } catch (mErr) {
-          console.warn(`Gemini model ${modelName} failed, trying next discovered model:`, mErr);
-        }
-      }
-    } catch (geminiError: any) {
-      console.warn("Gemini image generation error:", geminiError.message || geminiError);
+      console.warn("OpenAI gpt-image-1-mini error, trying next provider:", openaiErr.message || openaiErr);
     }
   }
 
@@ -227,7 +238,38 @@ export async function generateImageConditionedShot(params: ImageEditParams): Pro
     }
   }
 
-  // 4. MOCK FALLBACK: SVG Canvas Storyboard Mock Renderer
+  // 4. PROVIDER 4: Imagen 4 (imagen-4.0-fast-generate-001, text-to-image last resort for first-time creation only)
+  if (geminiKey && geminiKey.trim() !== '' && !hasReferenceImage) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiKey.trim() });
+      const response: any = await ai.models.generateImages({
+        model: "imagen-4.0-fast-generate-001",
+        prompt: fullInstruction,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: "image/jpeg",
+          aspectRatio: "16:9",
+          personGeneration: "ALLOW_ADULT" as any,
+        },
+      });
+
+      if (response?.generatedImages?.[0]?.image?.imageBytes) {
+        const base64 = response.generatedImages[0].image.imageBytes;
+        return {
+          imageUrl: `data:image/jpeg;base64,${base64}`,
+          engine: "Imagen 4 Fast (First-Time Text-to-Image Fallback)",
+          promptUsed: fullInstruction,
+          hasReferenceImage: false,
+          isFallbackTextOnly: true,
+          consistencyWarning: "no reference image available, consistency not guaranteed.",
+        };
+      }
+    } catch (imagenErr: any) {
+      console.warn("Imagen 4 text-to-image fallback error:", imagenErr.message || imagenErr);
+    }
+  }
+
+  // 5. PROVIDER 5: MOCK FALLBACK: SVG Canvas Storyboard Mock Renderer
   const fallbackSvgUrl = generateSvgMockDataUrl(params.instruction, undefined, undefined, 'Eye-Level');
   return {
     imageUrl: fallbackSvgUrl,

@@ -5,10 +5,37 @@ import { parseScriptFallback } from './openai';
 
 export function getGeminiClient(customApiKey?: string): GoogleGenerativeAI | null {
   const apiKey = customApiKey || process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === '') {
-    return null;
-  }
+  if (!apiKey || apiKey.trim() === '') return null;
   return new GoogleGenerativeAI(apiKey.trim());
+}
+
+/**
+ * Gemini 2.5 Flash Image (gemini-2.5-flash-image) Multimodal Image Generation Integration
+ */
+export async function generateStoryboardShot(promptText: string, aspectRatio = "16:9", customApiKey?: string) {
+  try {
+    const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.trim() === '') {
+      throw new Error("GEMINI_API_KEY is required.");
+    }
+    const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+    const response: any = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: [{ text: promptText }],
+    });
+
+    const parts = response?.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find((p: any) => p.inlineData && p.inlineData.data);
+    if (imagePart) {
+      const mime = imagePart.inlineData.mimeType || 'image/jpeg';
+      const b64 = imagePart.inlineData.data;
+      return `data:${mime};base64,${b64}`;
+    }
+    throw new Error("No image data returned from gemini-2.5-flash-image");
+  } catch (error) {
+    console.error("Gemini Image Generation Error:", error);
+    throw error;
+  }
 }
 
 const SCRIPT_PARSER_SYSTEM_PROMPT = `
@@ -198,31 +225,5 @@ Task: Rewrite the image generation prompt to apply the user's edit instruction (
   }
 }
 
-/**
- * Gemini Imagen 3 (imagen-3.0-generate-002) Image Generation Integration
- */
-export async function generateStoryboardShot(promptText: string, aspectRatio = "16:9", customApiKey?: string) {
-  try {
-    const apiKey = customApiKey || process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey.trim() === '') {
-      throw new Error("Gemini API key is required for Imagen generation.");
-    }
-    const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-    const response: any = await ai.models.generateImages({
-      model: "imagen-3.0-generate-002",
-      prompt: promptText,
-      config: {
-        numberOfImages: 1,
-        outputMimeType: "image/jpeg",
-        aspectRatio: aspectRatio,
-        personGeneration: "ALLOW_ADULT" as any,
-      },
-    });
-    const base64ImageBytes = response.generatedImages[0].image.imageBytes;
-    return `data:image/jpeg;base64,${base64ImageBytes}`;
-  } catch (error) {
-    console.error("Gemini Imagen Generation Error:", error);
-    throw error;
-  }
-}
+
 
