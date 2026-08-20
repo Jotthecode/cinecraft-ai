@@ -1,4 +1,4 @@
-# CineCraft AI — Full-Stack AI Storyboard Generator with Character Consistency & Shot Editing
+# CineCraft AI - Full-Stack AI Storyboard Generator with Character Consistency & Shot Editing
 
 An end-to-end full-stack web application that takes screenplays or ad scripts (3–4 scenes, 3–5 shots per scene), parses them using OpenAI LLMs (`gpt-4o-mini`), synthesizes storyboard panels using **FLUX.1 [schnell] / [dev]** via Fal.ai / Replicate, enforces **Character Identity Visual Consistency** across all shots, and supports **Natural Language Editing** of individual shot panels with side-by-side comparison.
 
